@@ -16,7 +16,7 @@
  * Plugin Name:       Easyled woocommerce Enhancment
  * Plugin URI:        https://acquistasitoweb.com/easyledwe
  * Description:       Questo plugin serve per estendere le funzioni di woocommerce per permettere una gestione migliore sia lato admin che lato user
- * Version:           1.5.0
+ * Version:           1.5.1
  * Author:            Acquistasitoweb
  * Author URI:        https://acquistasitoweb.com/
  * License:           GPL-2.0+
@@ -36,7 +36,7 @@ if ( ! defined( 'WPINC' ) ) {
  * Start at version 1.0.0 and use SemVer - https://semver.org
  * Rename this for your plugin and update it as you release new versions.
  */
-define( 'EASYLED_WOOCOMMERCE_ENHANCEMENTS_VERSION', '1.5.0' );
+define( 'EASYLED_WOOCOMMERCE_ENHANCEMENTS_VERSION', '1.5.1' );
 define( 'EASYLED_WOOCOMMERCE_ENHANCEMENTS_FILE', __FILE__ );
 define( 'EASYLED_WOOCOMMERCE_ENHANCEMENTS_BASENAME', plugin_basename( __FILE__ ) );
 define( 'EASYLED_WOOCOMMERCE_ENHANCEMENTS_GITHUB_REPOSITORY', 'https://github.com/easyledstore/Easyled-woocommerce-enhancements' );

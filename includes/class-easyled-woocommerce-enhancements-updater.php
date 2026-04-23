@@ -29,7 +29,7 @@ class Easyled_Woocommerce_Enhancements_Updater {
 		}
 		$release_asset_re = (string) apply_filters( 'easyled_woocommerce_enhancements_github_release_asset_pattern', '/\.zip($|[?&#])/i' );
 		$token            = (string) apply_filters( 'easyled_woocommerce_enhancements_github_token', '' );
-		$branch           = (string) apply_filters( 'easyled_woocommerce_enhancements_github_branch', '' );
+		$branch           = (string) apply_filters( 'easyled_woocommerce_enhancements_github_branch', 'main' );
 
 		if ( '' === $repository_url ) {
 			return;

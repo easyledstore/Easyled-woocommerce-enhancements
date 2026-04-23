@@ -124,6 +124,7 @@ class Easyled_Woocommerce_Enhancements_Public {
 		parse_str( $posted_data, $data );
 
 		if ( empty( $data['payment_method'] ) ) {
+			WC()->session->set( 'chosen_payment_method', '' );
 			return;
 		}
 
@@ -376,7 +377,7 @@ class Easyled_Woocommerce_Enhancements_Public {
 			}
 		}
 
-		if ( function_exists( 'WC' ) && WC() && WC()->session ) {
+		if ( function_exists( 'is_checkout' ) && is_checkout() && function_exists( 'WC' ) && WC() && WC()->session ) {
 			return (string) WC()->session->get( 'chosen_payment_method' );
 		}
 
