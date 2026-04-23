@@ -75,6 +75,16 @@ class Easyled_Woocommerce_Enhancements_Public {
 			$this->version,
 			false
 		);
+
+		wp_localize_script(
+			$this->plugin_name,
+			'easyledWooEnhancements',
+			array(
+				'debug'               => $this->is_debug_enabled(),
+				'codPaymentMethod'    => 'cod',
+				'codShippingKeywords' => $this->get_cod_shipping_keywords(),
+			)
+		);
 	}
 
 	/**
@@ -92,9 +102,13 @@ class Easyled_Woocommerce_Enhancements_Public {
 			return;
 		}
 
-		$chosen_payment_method = $this->get_chosen_payment_method();
-
-		if ( 'cod' !== $chosen_payment_method ) {
+		if ( ! $this->is_cod_shipping_selected() ) {
+			$this->debug_log(
+				'COD fee skipped: selected shipping method is not contrassegno.',
+				array(
+					'shipping' => $this->get_chosen_shipping_debug_context(),
+				)
+			);
 			return;
 		}
 
@@ -108,10 +122,20 @@ class Easyled_Woocommerce_Enhancements_Public {
 		}
 
 		$cart->add_fee( $label, $amount, $taxable );
+
+		$this->debug_log(
+			'COD fee added for contrassegno shipping.',
+			array(
+				'amount'   => $amount,
+				'carrier'  => $carrier,
+				'taxable'  => $taxable,
+				'shipping' => $this->get_chosen_shipping_debug_context(),
+			)
+		);
 	}
 
 	/**
-	 * Keep the chosen payment method in session during checkout refreshes.
+	 * Keep the chosen checkout state visible to this plugin during checkout refreshes.
 	 *
 	 * @param string $posted_data Serialized checkout form data.
 	 * @return void
@@ -129,16 +153,24 @@ class Easyled_Woocommerce_Enhancements_Public {
 		}
 
 		WC()->session->set( 'chosen_payment_method', sanitize_text_field( wp_unslash( $data['payment_method'] ) ) );
+
+		$this->debug_log(
+			'Checkout refresh received.',
+			array(
+				'payment_method'  => sanitize_text_field( wp_unslash( $data['payment_method'] ) ),
+				'shipping_method' => isset( $data['shipping_method'] ) ? wc_clean( wp_unslash( $data['shipping_method'] ) ) : array(),
+			)
+		);
 	}
 
 	/**
-	 * Hide alternative payment gateways when cash on delivery is selected.
+	 * Limit payment gateways when the selected shipping method is contrassegno.
 	 *
 	 * @param array $gateways Available gateways.
 	 * @return array
 	 */
-	public function filter_gateways_by_payment_method( $gateways ) {
-		if ( is_admin() && ! ( defined( 'DOING_AJAX' ) && DOING_AJAX ) ) {
+	public function filter_gateways_by_shipping( $gateways ) {
+		if ( is_admin() ) {
 			return $gateways;
 		}
 
@@ -146,13 +178,43 @@ class Easyled_Woocommerce_Enhancements_Public {
 			return $gateways;
 		}
 
-		if ( ! isset( $gateways['cod'] ) ) {
+		$chosen_shipping_methods = $this->get_selected_shipping_methods();
+		if ( empty( $chosen_shipping_methods ) ) {
 			return $gateways;
 		}
 
-		if ( 'cod' !== $this->get_chosen_payment_method() ) {
+		if ( ! $this->is_cod_shipping_selected() ) {
+			unset( $gateways['cod'] );
+
+			$this->debug_log(
+				'Non-BRT contrassegno shipping selected: COD gateway removed.',
+				array(
+					'gateways' => array_keys( $gateways ),
+					'shipping' => $this->get_chosen_shipping_debug_context(),
+				)
+			);
 			return $gateways;
 		}
+
+		if ( ! isset( $gateways['cod'] ) ) {
+			$this->debug_log(
+				'Contrassegno shipping selected, but COD gateway is not available.',
+				array(
+					'gateways' => array_keys( $gateways ),
+					'shipping' => $this->get_chosen_shipping_debug_context(),
+				)
+			);
+			return $gateways;
+		}
+
+		$this->debug_log(
+			'Contrassegno shipping selected: limiting gateways to COD.',
+			array(
+				'gateways_before' => array_keys( $gateways ),
+				'gateways_after'  => array( 'cod' ),
+				'shipping'        => $this->get_chosen_shipping_debug_context(),
+			)
+		);
 
 		return array(
 			'cod' => $gateways['cod'],
@@ -160,74 +222,21 @@ class Easyled_Woocommerce_Enhancements_Public {
 	}
 
 	/**
-	 * Optionally hide payment gateways based on the selected shipping method.
+	 * Auto-select COD when Contrassegno BRT is the chosen shipping method.
 	 *
-	 * The default behavior keeps all gateways available. Site owners can hook into the
-	 * filter and return arrays of allowed or blocked shipping method IDs.
-	 *
-	 * @param array $gateways Available gateways.
-	 * @return array
+	 * @param string $default Default payment gateway ID.
+	 * @return string
 	 */
-	public function filter_gateways_by_shipping( $gateways ) {
-		if ( is_admin() && ! ( defined( 'DOING_AJAX' ) && DOING_AJAX ) ) {
-			return $gateways;
-		}
-
+	public function force_cod_for_brt( $default ) {
 		if ( ! function_exists( 'WC' ) || ! WC() || ! WC()->session ) {
-			return $gateways;
+			return $default;
 		}
 
-		if ( ! isset( $gateways['cod'] ) ) {
-			return $gateways;
+		if ( $this->is_cod_shipping_selected() ) {
+			return 'cod';
 		}
 
-		$chosen_shipping_methods = (array) WC()->session->get( 'chosen_shipping_methods', array() );
-		if ( empty( $chosen_shipping_methods ) ) {
-			return $gateways;
-		}
-
-		$normalized_methods = array_filter(
-			array_map(
-				static function ( $method_id ) {
-					return strtolower( sanitize_text_field( (string) $method_id ) );
-				},
-				$chosen_shipping_methods
-			)
-		);
-
-		$allowed_shipping_methods = array_filter(
-			array_map(
-				static function ( $method_id ) {
-					return strtolower( sanitize_text_field( (string) $method_id ) );
-				},
-				(array) apply_filters( 'easyled_woocommerce_enhancements_cod_allowed_shipping_methods', array(), $chosen_shipping_methods )
-			)
-		);
-
-		$blocked_shipping_methods = array_filter(
-			array_map(
-				static function ( $method_id ) {
-					return strtolower( sanitize_text_field( (string) $method_id ) );
-				},
-				(array) apply_filters( 'easyled_woocommerce_enhancements_cod_blocked_shipping_methods', array(), $chosen_shipping_methods )
-			)
-		);
-
-		$disable_cod = false;
-
-		if ( ! empty( $allowed_shipping_methods ) && empty( array_intersect( $normalized_methods, $allowed_shipping_methods ) ) ) {
-			$disable_cod = true;
-		}
-
-		if ( ! empty( $blocked_shipping_methods ) && array_intersect( $normalized_methods, $blocked_shipping_methods ) ) {
-			$disable_cod = true;
-		}
-
-		if ( $disable_cod ) {
-			unset( $gateways['cod'] );
-		}
-
-		return $gateways;
+		return $default;
 	}
 
 	/**
@@ -240,12 +249,11 @@ class Easyled_Woocommerce_Enhancements_Public {
 			return;
 		}
 
-		if ( ! function_exists( 'WC' ) || ! WC() || ! WC()->cart ) {
+		if ( ! function_exists( 'WC' ) || ! WC() || ! WC()->cart || ! WC()->session ) {
 			return;
 		}
 
-		$chosen_payment_method = $this->get_chosen_payment_method();
-		if ( 'cod' !== $chosen_payment_method ) {
+		if ( ! $this->is_cod_shipping_selected() ) {
 			return;
 		}
 
@@ -341,7 +349,7 @@ class Easyled_Woocommerce_Enhancements_Public {
 		$selected_shipping_methods = $this->get_selected_shipping_methods();
 		$label                     = (string) apply_filters(
 			self::COD_FEE_LABEL_FILTER,
-			__( 'Supplemento pagamento alla consegna', 'easyled-woocommerce-enhancements' ),
+			__( 'Supplemento contrassegno', 'easyled-woocommerce-enhancements' ),
 			$carrier,
 			$selected_shipping_methods
 		);
@@ -350,8 +358,6 @@ class Easyled_Woocommerce_Enhancements_Public {
 			$labels_by_carrier = (array) apply_filters( 'easyled_woocommerce_enhancements_cod_fee_labels_by_carrier', array(), $selected_shipping_methods );
 			if ( isset( $labels_by_carrier[ $carrier ] ) && '' !== trim( (string) $labels_by_carrier[ $carrier ] ) ) {
 				$label = (string) $labels_by_carrier[ $carrier ];
-			} else {
-				$label = trim( $label . ' ' . $this->get_carrier_display_name( $carrier ) );
 			}
 		}
 
@@ -359,54 +365,84 @@ class Easyled_Woocommerce_Enhancements_Public {
 	}
 
 	/**
-	 * Resolve the selected payment method from the current request or session.
+	 * Keywords used to recognize a cash-on-delivery shipping rate.
 	 *
-	 * @return string
+	 * @return array
 	 */
-	private function get_chosen_payment_method() {
-		if ( isset( $_POST['payment_method'] ) ) {
-			return sanitize_text_field( wp_unslash( $_POST['payment_method'] ) );
-		}
+	private function get_cod_shipping_keywords() {
+		$keywords = (array) apply_filters(
+			'easyled_woocommerce_enhancements_cod_shipping_keywords',
+			array( 'contrassegno_brt' )
+		);
 
-		if ( isset( $_POST['post_data'] ) ) {
-			$post_data = wp_unslash( $_POST['post_data'] );
-			parse_str( $post_data, $data );
+		$keywords = array_map(
+			static function ( $keyword ) {
+				return strtolower( trim( sanitize_text_field( (string) $keyword ) ) );
+			},
+			$keywords
+		);
 
-			if ( ! empty( $data['payment_method'] ) ) {
-				return sanitize_text_field( wp_unslash( $data['payment_method'] ) );
-			}
-		}
-
-		if ( function_exists( 'is_checkout' ) && is_checkout() && function_exists( 'WC' ) && WC() && WC()->session ) {
-			return (string) WC()->session->get( 'chosen_payment_method' );
-		}
-
-		return '';
+		return array_values( array_filter( array_unique( $keywords ) ) );
 	}
 
 	/**
-	 * Return the selected shipping methods from the current request or session.
+	 * Determine whether the selected shipping method is a contrassegno rate.
+	 *
+	 * @return bool
+	 */
+	private function is_cod_shipping_selected() {
+		foreach ( $this->get_selected_shipping_methods() as $method_id ) {
+			if ( $this->is_cod_shipping_method_id( $method_id ) ) {
+				return true;
+			}
+		}
+
+		return false;
+	}
+
+	/**
+	 * Read the selected shipping rates from the WooCommerce session/packages.
+	 *
+	 * @return array
+	 */
+	private function get_chosen_shipping_rates() {
+		if ( ! function_exists( 'WC' ) || ! WC() || ! WC()->session || ! WC()->shipping() ) {
+			return array();
+		}
+
+		$chosen_methods = (array) WC()->session->get( 'chosen_shipping_methods', array() );
+		$packages       = (array) WC()->shipping()->get_packages();
+		$rates          = array();
+
+		foreach ( $chosen_methods as $package_index => $chosen_rate_id ) {
+			$chosen_rate_id = (string) $chosen_rate_id;
+			$package_rates  = isset( $packages[ $package_index ]['rates'] ) ? (array) $packages[ $package_index ]['rates'] : array();
+
+			if ( isset( $package_rates[ $chosen_rate_id ] ) ) {
+				$rates[] = array(
+					'id'   => $chosen_rate_id,
+					'rate' => $package_rates[ $chosen_rate_id ],
+				);
+				continue;
+			}
+
+			$rates[] = array(
+				'id'   => $chosen_rate_id,
+				'rate' => null,
+			);
+		}
+
+		return $rates;
+	}
+
+	/**
+	 * Return the selected shipping method IDs from the current session.
 	 *
 	 * @return array
 	 */
 	private function get_selected_shipping_methods() {
-		$selected_shipping_methods = array();
-
-		if ( isset( $_POST['shipping_method'] ) ) {
-			$selected_shipping_methods = wp_unslash( $_POST['shipping_method'] );
-		} elseif ( isset( $_POST['post_data'] ) ) {
-			$post_data = wp_unslash( $_POST['post_data'] );
-			parse_str( $post_data, $data );
-
-			if ( isset( $data['shipping_method'] ) ) {
-				$selected_shipping_methods = $data['shipping_method'];
-			}
-		} elseif ( function_exists( 'WC' ) && WC() && WC()->session ) {
-			$selected_shipping_methods = WC()->session->get( 'chosen_shipping_methods', array() );
-		}
-
-		if ( ! is_array( $selected_shipping_methods ) ) {
-			$selected_shipping_methods = array( $selected_shipping_methods );
+		if ( ! function_exists( 'WC' ) || ! WC() || ! WC()->session ) {
+			return array();
 		}
 
 		return array_values(
@@ -415,7 +451,7 @@ class Easyled_Woocommerce_Enhancements_Public {
 					static function ( $method_id ) {
 						return sanitize_text_field( (string) $method_id );
 					},
-					$selected_shipping_methods
+					(array) WC()->session->get( 'chosen_shipping_methods', array() )
 				)
 			)
 		);
@@ -427,25 +463,12 @@ class Easyled_Woocommerce_Enhancements_Public {
 	 * @return string
 	 */
 	private function get_selected_shipping_carrier() {
-		$selected_shipping_methods = $this->get_selected_shipping_methods();
-
-		if ( empty( $selected_shipping_methods ) || ! function_exists( 'WC' ) || ! WC() || ! WC()->shipping() ) {
-			return '';
-		}
-
-		$packages = WC()->shipping()->get_packages();
-
-		foreach ( $packages as $package_index => $package ) {
-			if ( empty( $selected_shipping_methods[ $package_index ] ) || empty( $package['rates'] ) || ! is_array( $package['rates'] ) ) {
+		foreach ( $this->get_chosen_shipping_rates() as $rate_data ) {
+			if ( ! is_object( $rate_data['rate'] ) || ! method_exists( $rate_data['rate'], 'get_label' ) ) {
 				continue;
 			}
 
-			$selected_rate_id = (string) $selected_shipping_methods[ $package_index ];
-			if ( empty( $package['rates'][ $selected_rate_id ] ) || ! is_object( $package['rates'][ $selected_rate_id ] ) ) {
-				continue;
-			}
-
-			$carrier = $this->detect_carrier( $package['rates'][ $selected_rate_id ]->get_label(), $package['rates'][ $selected_rate_id ] );
+			$carrier = $this->detect_carrier( $rate_data['rate']->get_label(), $rate_data['rate'] );
 			if ( '' !== $carrier ) {
 				return $carrier;
 			}
@@ -455,33 +478,122 @@ class Easyled_Woocommerce_Enhancements_Public {
 	}
 
 	/**
-	 * Convert a carrier slug into a readable name.
+	 * Determine whether a shipping rate should be treated as contrassegno.
 	 *
-	 * @param string $carrier Carrier slug.
-	 * @return string
+	 * @param WC_Shipping_Rate|mixed $rate Shipping rate object.
+	 * @param string                 $fallback_id Selected rate ID from the session.
+	 * @return bool
 	 */
-	private function get_carrier_display_name( $carrier ) {
-		$carrier_labels = (array) apply_filters(
-			'easyled_woocommerce_enhancements_carrier_labels',
-			array(
-				'bartolini' => 'Bartolini',
-				'brt'       => 'BRT',
-			),
-			$carrier
-		);
+	private function is_cod_shipping_rate( $rate, $fallback_id = '' ) {
+		$search_space = strtolower( (string) $fallback_id );
 
-		if ( isset( $carrier_labels[ $carrier ] ) && '' !== trim( (string) $carrier_labels[ $carrier ] ) ) {
-			return (string) $carrier_labels[ $carrier ];
+		if ( is_object( $rate ) ) {
+			if ( method_exists( $rate, 'get_id' ) ) {
+				$search_space .= ' ' . strtolower( (string) $rate->get_id() );
+			}
+
+			if ( method_exists( $rate, 'get_label' ) ) {
+				$search_space .= ' ' . strtolower( wp_strip_all_tags( (string) $rate->get_label() ) );
+			}
+
+			if ( method_exists( $rate, 'get_method_id' ) ) {
+				$search_space .= ' ' . strtolower( (string) $rate->get_method_id() );
+			}
+
+			if ( method_exists( $rate, 'get_instance_id' ) ) {
+				$search_space .= ' ' . strtolower( (string) $rate->get_instance_id() );
+			}
 		}
 
-		$carrier = str_replace( array( '-', '_' ), ' ', (string) $carrier );
-		return ucwords( strtolower( $carrier ) );
+		foreach ( $this->get_cod_shipping_keywords() as $keyword ) {
+			if ( '' !== $keyword && false !== strpos( $search_space, $keyword ) ) {
+				return true;
+			}
+		}
+
+		return false;
+	}
+
+	/**
+	 * Determine whether a shipping method ID is the Contrassegno BRT rate.
+	 *
+	 * @param string $method_id Selected shipping method ID.
+	 * @return bool
+	 */
+	private function is_cod_shipping_method_id( $method_id ) {
+		$method_id = strtolower( sanitize_text_field( (string) $method_id ) );
+
+		foreach ( $this->get_cod_shipping_keywords() as $keyword ) {
+			if ( '' !== $keyword && false !== strpos( $method_id, $keyword ) ) {
+				return true;
+			}
+		}
+
+		return false;
+	}
+
+	/**
+	 * Build a compact context array for checkout debugging.
+	 *
+	 * @return array
+	 */
+	private function get_chosen_shipping_debug_context() {
+		$context = array();
+
+		foreach ( $this->get_chosen_shipping_rates() as $rate_data ) {
+			$label = '';
+
+			if ( is_object( $rate_data['rate'] ) && method_exists( $rate_data['rate'], 'get_label' ) ) {
+				$label = (string) $rate_data['rate']->get_label();
+			}
+
+			$context[] = array(
+				'id'              => $rate_data['id'],
+				'label'           => $label,
+				'is_contrassegno' => $this->is_cod_shipping_method_id( $rate_data['id'] ),
+			);
+		}
+
+		return $context;
+	}
+
+	/**
+	 * Check whether checkout debug logging is enabled.
+	 *
+	 * @return bool
+	 */
+	private function is_debug_enabled() {
+		$enabled = defined( 'EASYLED_WOOCOMMERCE_ENHANCEMENTS_DEBUG' ) && EASYLED_WOOCOMMERCE_ENHANCEMENTS_DEBUG;
+
+		return (bool) apply_filters( 'easyled_woocommerce_enhancements_debug', $enabled );
+	}
+
+	/**
+	 * Write debug details to the WooCommerce logger when enabled.
+	 *
+	 * @param string $message Log message.
+	 * @param array  $context Additional context.
+	 * @return void
+	 */
+	private function debug_log( $message, $context = array() ) {
+		if ( ! $this->is_debug_enabled() ) {
+			return;
+		}
+
+		$context['source'] = 'easyled-woocommerce-enhancements';
+
+		if ( function_exists( 'wc_get_logger' ) ) {
+			wc_get_logger()->debug( $message, $context );
+			return;
+		}
+
+		error_log( '[easyled-woocommerce-enhancements] ' . $message . ' ' . wp_json_encode( $context ) );
 	}
 
 	/**
 	 * Detect a carrier name from the shipping label or shipping rate object.
 	 *
-	 * @param string              $label  Shipping rate label.
+	 * @param string                 $label  Shipping rate label.
 	 * @param WC_Shipping_Rate|mixed $method Shipping rate object.
 	 * @return string
 	 */
@@ -508,4 +620,5 @@ class Easyled_Woocommerce_Enhancements_Public {
 
 		return '';
 	}
+
 }

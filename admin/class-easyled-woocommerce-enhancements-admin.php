@@ -97,7 +97,7 @@ class Easyled_Woocommerce_Enhancements_Admin {
 	 * @return array
 	 */
 	public function add_order_columns_hpos( $columns ) {
-		return $this->add_order_columns( $columns );
+		return $this->add_order_columns( $columns, __( 'Packing List', 'easyled-woocommerce-enhancements' ) );
 	}
 
 	/**
@@ -121,7 +121,7 @@ class Easyled_Woocommerce_Enhancements_Admin {
 			return;
 		}
 
-		echo wp_kses_post( $this->render_order_column_value( $column, $order ) );
+		echo wp_kses( $this->render_order_column_value( $column, $order ), $this->get_admin_column_allowed_html() );
 	}
 
 	/**
@@ -148,7 +148,7 @@ class Easyled_Woocommerce_Enhancements_Admin {
 			return;
 		}
 
-		echo wp_kses_post( $this->render_order_column_value( $column, $order ) );
+		echo wp_kses( $this->render_order_column_value( $column, $order ), $this->get_admin_column_allowed_html() );
 	}
 
 	/**
@@ -186,7 +186,6 @@ class Easyled_Woocommerce_Enhancements_Admin {
 		$total_weight   = $this->get_order_total_weight( $order );
 		$billing        = $this->format_address_for_print( $order->get_formatted_billing_address() );
 		$shipping       = $this->format_address_for_print( $order->get_formatted_shipping_address() );
-		$weight_unit    = get_option( 'woocommerce_weight_unit', 'kg' );
 		?>
 		<!DOCTYPE html>
 		<html lang="it">
@@ -341,8 +340,6 @@ class Easyled_Woocommerce_Enhancements_Admin {
 						<div><strong><?php echo esc_html__( 'Ordine', 'easyled-woocommerce-enhancements' ); ?>:</strong> #<?php echo esc_html( $order_number ); ?></div>
 						<div><strong><?php echo esc_html__( 'Metodo di pagamento', 'easyled-woocommerce-enhancements' ); ?>:</strong> <?php echo esc_html( $payment_method ?: __( 'Non disponibile', 'easyled-woocommerce-enhancements' ) ); ?></div>
 						<div><strong><?php echo esc_html__( 'Peso totale prodotti', 'easyled-woocommerce-enhancements' ); ?>:</strong> <?php echo esc_html( wc_format_weight( $total_weight ) ); ?></div>
-						<div><strong><?php echo esc_html__( 'Unit di peso', 'easyled-woocommerce-enhancements' ); ?>:</strong> <?php echo esc_html( $weight_unit ); ?></div>
-						<div><strong><?php echo esc_html__( 'Codice Acquistasitoweb', 'easyled-woocommerce-enhancements' ); ?>:</strong> <?php echo esc_html( $this->get_acquistasitoweb_transaction_code() ); ?></div>
 					</div>
 				</div>
 
@@ -364,7 +361,7 @@ class Easyled_Woocommerce_Enhancements_Admin {
 							<th class="col-product"><?php echo esc_html__( 'Prodotto', 'easyled-woocommerce-enhancements' ); ?></th>
 							<th class="col-sku"><?php echo esc_html__( 'SKU', 'easyled-woocommerce-enhancements' ); ?></th>
 							<th class="col-barcode"><?php echo esc_html__( 'Barcode 128', 'easyled-woocommerce-enhancements' ); ?></th>
-							<th class="col-qty"><?php echo esc_html__( 'Qta', 'easyled-woocommerce-enhancements' ); ?></th>
+							<th class="col-qty"><?php echo wp_kses_post( __( 'Q.t&agrave;', 'easyled-woocommerce-enhancements' ) ); ?></th>
 						</tr>
 					</thead>
 					<tbody>
@@ -530,10 +527,14 @@ class Easyled_Woocommerce_Enhancements_Admin {
 	 * @param array $columns Existing columns.
 	 * @return array
 	 */
-	private function add_order_columns( $columns ) {
+	private function add_order_columns( $columns, $packing_label = null ) {
+		if ( null === $packing_label ) {
+			$packing_label = __( 'Packing', 'easyled-woocommerce-enhancements' );
+		}
+
 		$columns = $this->insert_column_after( $columns, 'order_number', self::PAYMENT_COLUMN_KEY, __( 'Pagamento', 'easyled-woocommerce-enhancements' ) );
 		$columns = $this->insert_column_after( $columns, self::PAYMENT_COLUMN_KEY, self::SHIPPING_COLUMN_KEY, __( 'Spedizione', 'easyled-woocommerce-enhancements' ) );
-		$columns = $this->insert_column_after( $columns, 'order_total', self::PACKING_COLUMN_KEY, __( 'Packing', 'easyled-woocommerce-enhancements' ) );
+		$columns = $this->insert_column_after( $columns, 'order_total', self::PACKING_COLUMN_KEY, $packing_label );
 
 		if ( ! isset( $columns[ self::PAYMENT_COLUMN_KEY ] ) ) {
 			$columns[ self::PAYMENT_COLUMN_KEY ] = __( 'Pagamento', 'easyled-woocommerce-enhancements' );
@@ -544,7 +545,7 @@ class Easyled_Woocommerce_Enhancements_Admin {
 		}
 
 		if ( ! isset( $columns[ self::PACKING_COLUMN_KEY ] ) ) {
-			$columns[ self::PACKING_COLUMN_KEY ] = __( 'Packing', 'easyled-woocommerce-enhancements' );
+			$columns[ self::PACKING_COLUMN_KEY ] = $packing_label;
 		}
 
 		return $columns;
@@ -664,8 +665,9 @@ class Easyled_Woocommerce_Enhancements_Admin {
 	 */
 	private function get_packing_list_button_html( $order_id ) {
 		return sprintf(
-			'<a class="button easyled-packing-list-button" href="%1$s" target="_blank" rel="noopener noreferrer"><span class="dashicons dashicons-printer"></span> <span>%2$s</span></a>',
+			'<a class="button easyled-packing-list-button" href="%1$s" target="_blank" rel="noopener noreferrer">%2$s<span>%3$s</span></a>',
 			esc_url( $this->get_packing_list_url( $order_id ) ),
+			$this->get_printer_icon_svg(),
 			esc_html__( 'Stampa', 'easyled-woocommerce-enhancements' )
 		);
 	}
@@ -690,6 +692,49 @@ class Easyled_Woocommerce_Enhancements_Admin {
 	 */
 	private function get_printer_icon_svg() {
 		return '<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:16px;height:16px;"><polyline points="6 9 6 2 18 2 18 9"></polyline><path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"></path><rect x="6" y="14" width="12" height="8"></rect></svg>';
+	}
+
+	/**
+	 * Allowed HTML for admin order column output.
+	 *
+	 * @return array
+	 */
+	private function get_admin_column_allowed_html() {
+		$allowed = wp_kses_allowed_html( 'post' );
+
+		$allowed['a']['target'] = true;
+		$allowed['a']['rel']    = true;
+
+		$allowed['svg'] = array(
+			'xmlns'           => true,
+			'width'           => true,
+			'height'          => true,
+			'viewbox'         => true,
+			'viewBox'         => true,
+			'fill'            => true,
+			'stroke'          => true,
+			'stroke-width'    => true,
+			'stroke-linecap'  => true,
+			'stroke-linejoin' => true,
+			'style'           => true,
+		);
+
+		$allowed['polyline'] = array(
+			'points' => true,
+		);
+
+		$allowed['path'] = array(
+			'd' => true,
+		);
+
+		$allowed['rect'] = array(
+			'x'      => true,
+			'y'      => true,
+			'width'  => true,
+			'height' => true,
+		);
+
+		return $allowed;
 	}
 
 	/**
@@ -742,7 +787,7 @@ class Easyled_Woocommerce_Enhancements_Admin {
 	private function get_cod_fee_label() {
 		return (string) apply_filters(
 			self::COD_FEE_LABEL_FILTER,
-			__( 'Supplemento pagamento alla consegna', 'easyled-woocommerce-enhancements' )
+			__( 'Supplemento contrassegno', 'easyled-woocommerce-enhancements' )
 		);
 	}
 

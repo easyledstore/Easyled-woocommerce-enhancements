@@ -4,7 +4,7 @@ Donate link: https://acquistasitoweb.com/
 Tags: comments, spam
 Requires at least: 3.0.1
 Tested up to: 3.4
-Stable tag: 4.3
+Stable tag: 1.5.5
 License: GPLv2 or later
 License URI: http://www.gnu.org/licenses/gpl-2.0.html
 
@@ -71,22 +71,13 @@ directory take precedence. For example, `/assets/screenshot-1.png` would win ove
 * A change since the previous version.
 * Another change.
 
-== GitHub Releases Update System ==
+== Checkout Debug ==
 
-This plugin can check for updates directly from GitHub Releases.
+To debug the contrassegno checkout flow, add this constant to `wp-config.php`:
 
-To use it:
+`define( 'EASYLED_WOOCOMMERCE_ENHANCEMENTS_DEBUG', true );`
 
-1. Set the repository in `easyled-woocommerce-enhancements.php` if your GitHub repo is not `easyledstore/Easyled-woocommerce-enhancements`.
-2. Publish a GitHub Release with a tag like `1.5.1` or `v1.5.1`.
-3. Attach a ZIP asset to the release when possible. The plugin will use the first `.zip` asset it finds, then fall back to the GitHub source archive.
-
-Optional filters:
-
-* `easyled_woocommerce_enhancements_github_token`
-* `easyled_woocommerce_enhancements_github_release_asset_pattern`
-* `easyled_woocommerce_enhancements_github_requires`
-* `easyled_woocommerce_enhancements_github_tested`
+Then check WooCommerce logs with source `easyled-woocommerce-enhancements`.
 
 = 0.5 =
 * List versions from most recent at top to oldest at bottom.

@@ -16,12 +16,11 @@
  * Plugin Name:       Easyled woocommerce Enhancment
  * Plugin URI:        https://acquistasitoweb.com/easyledwe
  * Description:       Questo plugin serve per estendere le funzioni di woocommerce per permettere una gestione migliore sia lato admin che lato user
- * Version:           1.5.1
+ * Version:           1.5.5
  * Author:            Acquistasitoweb
  * Author URI:        https://acquistasitoweb.com/
  * License:           GPL-2.0+
  * License URI:       http://www.gnu.org/licenses/gpl-2.0.txt
- * Update URI:        https://github.com/easyledstore/Easyled-woocommerce-enhancements
  * Text Domain:       easyled-woocommerce-enhancements
  * Domain Path:       /languages
  */
@@ -36,10 +35,7 @@ if ( ! defined( 'WPINC' ) ) {
  * Start at version 1.0.0 and use SemVer - https://semver.org
  * Rename this for your plugin and update it as you release new versions.
  */
-define( 'EASYLED_WOOCOMMERCE_ENHANCEMENTS_VERSION', '1.5.1' );
-define( 'EASYLED_WOOCOMMERCE_ENHANCEMENTS_FILE', __FILE__ );
-define( 'EASYLED_WOOCOMMERCE_ENHANCEMENTS_BASENAME', plugin_basename( __FILE__ ) );
-define( 'EASYLED_WOOCOMMERCE_ENHANCEMENTS_GITHUB_REPOSITORY', 'https://github.com/easyledstore/Easyled-woocommerce-enhancements' );
+define( 'EASYLED_WOOCOMMERCE_ENHANCEMENTS_VERSION', '1.5.5' );
 
 /**
  * The code that runs during plugin activation.
@@ -67,20 +63,6 @@ register_deactivation_hook( __FILE__, 'deactivate_easyled_woocommerce_enhancemen
  * admin-specific hooks, and public-facing site hooks.
  */
 require plugin_dir_path( __FILE__ ) . 'includes/class-easyled-woocommerce-enhancements.php';
-require_once plugin_dir_path( __FILE__ ) . 'plugin-update-checker/plugin-update-checker.php';
-require_once plugin_dir_path( __FILE__ ) . 'includes/class-easyled-woocommerce-enhancements-updater.php';
-
-/**
- * Return the GitHub repository used for release updates.
- *
- * @return string
- */
-function easyled_woocommerce_enhancements_get_github_repository() {
-	return (string) apply_filters(
-		'easyled_woocommerce_enhancements_github_repository',
-		EASYLED_WOOCOMMERCE_ENHANCEMENTS_GITHUB_REPOSITORY
-	);
-}
 
 /**
  * Check whether WooCommerce is available.

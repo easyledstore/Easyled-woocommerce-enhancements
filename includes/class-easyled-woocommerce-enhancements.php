@@ -70,7 +70,7 @@ class Easyled_Woocommerce_Enhancements {
 		if ( defined( 'EASYLED_WOOCOMMERCE_ENHANCEMENTS_VERSION' ) ) {
 			$this->version = EASYLED_WOOCOMMERCE_ENHANCEMENTS_VERSION;
 		} else {
-			$this->version = '1.5.1';
+			$this->version = '1.5.5';
 		}
 		$this->plugin_name = 'easyled-woocommerce-enhancements';
 
@@ -78,7 +78,6 @@ class Easyled_Woocommerce_Enhancements {
 		$this->set_locale();
 		$this->define_admin_hooks();
 		$this->define_public_hooks();
-		$this->define_update_hooks();
 
 	}
 
@@ -111,11 +110,6 @@ class Easyled_Woocommerce_Enhancements {
 		 * of the plugin.
 		 */
 		require_once plugin_dir_path( dirname( __FILE__ ) ) . 'includes/class-easyled-woocommerce-enhancements-i18n.php';
-
-		/**
-		 * The class responsible for handling plugin updates.
-		 */
-		require_once plugin_dir_path( dirname( __FILE__ ) ) . 'includes/class-easyled-woocommerce-enhancements-updater.php';
 
 		/**
 		 * The class responsible for defining all actions that occur in the admin area.
@@ -164,8 +158,10 @@ class Easyled_Woocommerce_Enhancements {
 		$this->loader->add_action( 'admin_enqueue_scripts', $plugin_admin, 'enqueue_scripts' );
 		$this->loader->add_filter( 'manage_edit-shop_order_columns', $plugin_admin, 'add_order_columns_classic', 20 );
 		$this->loader->add_filter( 'manage_woocommerce_page_wc-orders_columns', $plugin_admin, 'add_order_columns_hpos', 20 );
+		$this->loader->add_filter( 'woocommerce_shop_order_list_table_columns', $plugin_admin, 'add_order_columns_hpos', 20 );
 		$this->loader->add_action( 'manage_shop_order_posts_custom_column', $plugin_admin, 'render_order_columns_classic', 20, 2 );
 		$this->loader->add_action( 'manage_woocommerce_page_wc-orders_custom_column', $plugin_admin, 'render_order_columns_hpos', 20, 2 );
+		$this->loader->add_action( 'woocommerce_shop_order_list_table_custom_column', $plugin_admin, 'render_order_columns_hpos', 20, 2 );
 		$this->loader->add_action( 'admin_post_easyled_print_packing_list', $plugin_admin, 'handle_print_packing_list' );
 		$this->loader->add_action( 'admin_head', $plugin_admin, 'output_admin_styles' );
 
@@ -184,35 +180,13 @@ class Easyled_Woocommerce_Enhancements {
 
 		$this->loader->add_action( 'wp_enqueue_scripts', $plugin_public, 'enqueue_styles' );
 		$this->loader->add_action( 'wp_enqueue_scripts', $plugin_public, 'enqueue_scripts' );
-		$this->loader->add_action( 'woocommerce_cart_calculate_fees', $plugin_public, 'add_cod_fee', 20, 1 );
+		$this->loader->add_action( 'woocommerce_cart_calculate_fees', $plugin_public, 'add_cod_fee', 9999, 1 );
 		$this->loader->add_action( 'woocommerce_checkout_update_order_review', $plugin_public, 'sync_payment_method_from_checkout', 10, 1 );
-		$this->loader->add_filter( 'woocommerce_available_payment_gateways', $plugin_public, 'filter_gateways_by_shipping', 20, 1 );
-		$this->loader->add_filter( 'woocommerce_available_payment_gateways', $plugin_public, 'filter_gateways_by_payment_method', 25, 1 );
+		$this->loader->add_filter( 'woocommerce_available_payment_gateways', $plugin_public, 'filter_gateways_by_shipping', 9999, 1 );
+		$this->loader->add_filter( 'woocommerce_default_payment_gateway', $plugin_public, 'force_cod_for_brt', 10, 1 );
 		$this->loader->add_action( 'woocommerce_review_order_after_payment', $plugin_public, 'output_cod_fee_notice', 20 );
 		$this->loader->add_filter( 'woocommerce_cart_shipping_method_full_label', $plugin_public, 'add_shipping_icons', 20, 2 );
 
-	}
-
-	/**
-	 * Register hooks used by the GitHub release updater.
-	 *
-	 * @since    1.5.1
-	 * @access   private
-	 */
-	private function define_update_hooks() {
-		$repository = function_exists( 'easyled_woocommerce_enhancements_get_github_repository' )
-			? easyled_woocommerce_enhancements_get_github_repository()
-			: ( defined( 'EASYLED_WOOCOMMERCE_ENHANCEMENTS_GITHUB_REPOSITORY' ) ? EASYLED_WOOCOMMERCE_ENHANCEMENTS_GITHUB_REPOSITORY : '' );
-
-		if ( '' === $repository || ! defined( 'EASYLED_WOOCOMMERCE_ENHANCEMENTS_FILE' ) ) {
-			return;
-		}
-
-		new Easyled_Woocommerce_Enhancements_Updater(
-			EASYLED_WOOCOMMERCE_ENHANCEMENTS_FILE,
-			$this->get_version(),
-			$repository
-		);
 	}
 
 	/**
