@@ -78,7 +78,7 @@ This plugin can check for updates directly from GitHub Releases.
 To use it:
 
 1. Set the repository in `easyled-woocommerce-enhancements.php` if your GitHub repo is not `easyledstore/Easyled-woocommerce-enhancements`.
-2. Publish a GitHub Release with a tag like `1.2.0` or `v1.2.0`.
+2. Publish a GitHub Release with a tag like `1.5.0` or `v1.5.0`.
 3. Attach a ZIP asset to the release when possible. The plugin will use the first `.zip` asset it finds, then fall back to the GitHub source archive.
 
 Optional filters:

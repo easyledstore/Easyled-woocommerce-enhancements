@@ -70,7 +70,7 @@ class Easyled_Woocommerce_Enhancements {
 		if ( defined( 'EASYLED_WOOCOMMERCE_ENHANCEMENTS_VERSION' ) ) {
 			$this->version = EASYLED_WOOCOMMERCE_ENHANCEMENTS_VERSION;
 		} else {
-			$this->version = '1.2.0';
+			$this->version = '1.5.0';
 		}
 		$this->plugin_name = 'easyled-woocommerce-enhancements';
 
@@ -196,7 +196,7 @@ class Easyled_Woocommerce_Enhancements {
 	/**
 	 * Register hooks used by the GitHub release updater.
 	 *
-	 * @since    1.2.0
+	 * @since    1.5.0
 	 * @access   private
 	 */
 	private function define_update_hooks() {
