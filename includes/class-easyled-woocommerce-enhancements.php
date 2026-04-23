@@ -185,9 +185,11 @@ class Easyled_Woocommerce_Enhancements {
 		$this->loader->add_action( 'wp_enqueue_scripts', $plugin_public, 'enqueue_styles' );
 		$this->loader->add_action( 'wp_enqueue_scripts', $plugin_public, 'enqueue_scripts' );
 		$this->loader->add_action( 'woocommerce_cart_calculate_fees', $plugin_public, 'add_cod_fee', 20, 1 );
+		$this->loader->add_action( 'woocommerce_checkout_update_order_review', $plugin_public, 'sync_payment_method_from_checkout', 10, 1 );
 		$this->loader->add_filter( 'woocommerce_available_payment_gateways', $plugin_public, 'filter_gateways_by_shipping', 20, 1 );
+		$this->loader->add_filter( 'woocommerce_available_payment_gateways', $plugin_public, 'filter_gateways_by_payment_method', 25, 1 );
+		$this->loader->add_action( 'woocommerce_review_order_after_payment', $plugin_public, 'output_cod_fee_notice', 20 );
 		$this->loader->add_filter( 'woocommerce_cart_shipping_method_full_label', $plugin_public, 'add_shipping_icons', 20, 2 );
-		$this->loader->add_action( 'wp_footer', $plugin_public, 'refresh_checkout_on_payment_change' );
 
 	}
 

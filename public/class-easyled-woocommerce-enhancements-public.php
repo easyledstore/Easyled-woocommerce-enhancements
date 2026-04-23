@@ -92,20 +92,70 @@ class Easyled_Woocommerce_Enhancements_Public {
 			return;
 		}
 
-		$chosen_payment_method = WC()->session->get( 'chosen_payment_method' );
+		$chosen_payment_method = $this->get_chosen_payment_method();
+
 		if ( 'cod' !== $chosen_payment_method ) {
 			return;
 		}
 
-		$amount  = (float) apply_filters( 'easyled_woocommerce_enhancements_cod_fee_amount', 9.90, $cart );
+		$carrier = $this->get_selected_shipping_carrier();
+		$amount  = $this->get_cod_fee_amount( $cart, $carrier );
 		$taxable = (bool) apply_filters( 'easyled_woocommerce_enhancements_cod_fee_taxable', true, $cart );
-		$label   = $this->get_cod_fee_label();
+		$label   = $this->get_cod_fee_label( $carrier );
 
 		if ( $amount <= 0 ) {
 			return;
 		}
 
 		$cart->add_fee( $label, $amount, $taxable );
+	}
+
+	/**
+	 * Keep the chosen payment method in session during checkout refreshes.
+	 *
+	 * @param string $posted_data Serialized checkout form data.
+	 * @return void
+	 */
+	public function sync_payment_method_from_checkout( $posted_data ) {
+		if ( ! function_exists( 'WC' ) || ! WC() || ! WC()->session ) {
+			return;
+		}
+
+		parse_str( $posted_data, $data );
+
+		if ( empty( $data['payment_method'] ) ) {
+			return;
+		}
+
+		WC()->session->set( 'chosen_payment_method', sanitize_text_field( wp_unslash( $data['payment_method'] ) ) );
+	}
+
+	/**
+	 * Hide alternative payment gateways when cash on delivery is selected.
+	 *
+	 * @param array $gateways Available gateways.
+	 * @return array
+	 */
+	public function filter_gateways_by_payment_method( $gateways ) {
+		if ( is_admin() && ! ( defined( 'DOING_AJAX' ) && DOING_AJAX ) ) {
+			return $gateways;
+		}
+
+		if ( ! function_exists( 'WC' ) || ! WC() || ! WC()->session ) {
+			return $gateways;
+		}
+
+		if ( ! isset( $gateways['cod'] ) ) {
+			return $gateways;
+		}
+
+		if ( 'cod' !== $this->get_chosen_payment_method() ) {
+			return $gateways;
+		}
+
+		return array(
+			'cod' => $gateways['cod'],
+		);
 	}
 
 	/**
@@ -180,6 +230,38 @@ class Easyled_Woocommerce_Enhancements_Public {
 	}
 
 	/**
+	 * Render a visible notice for the COD surcharge on checkout.
+	 *
+	 * @return void
+	 */
+	public function output_cod_fee_notice() {
+		if ( is_admin() && ! ( defined( 'DOING_AJAX' ) && DOING_AJAX ) ) {
+			return;
+		}
+
+		if ( ! function_exists( 'WC' ) || ! WC() || ! WC()->cart ) {
+			return;
+		}
+
+		$chosen_payment_method = $this->get_chosen_payment_method();
+		if ( 'cod' !== $chosen_payment_method ) {
+			return;
+		}
+
+		$carrier = $this->get_selected_shipping_carrier();
+		$amount  = $this->get_cod_fee_amount( WC()->cart, $carrier );
+		if ( $amount <= 0 ) {
+			return;
+		}
+
+		printf(
+			'<div class="woocommerce-info easyled-cod-fee-notice" role="status" aria-live="polite"><strong>%1$s</strong> %2$s</div>',
+			esc_html( $this->get_cod_fee_label( $carrier ) ),
+			wp_kses_post( wc_price( $amount ) )
+		);
+	}
+
+	/**
 	 * Prefix shipping labels with carrier icons when a known carrier is detected.
 	 *
 	 * @param string              $label  Shipping rate label.
@@ -215,45 +297,184 @@ class Easyled_Woocommerce_Enhancements_Public {
 		$alt_text = ! empty( $icons[ $carrier ]['label'] ) ? $icons[ $carrier ]['label'] : strtoupper( $carrier );
 
 		$icon_html = sprintf(
-			'<img class="easyled-shipping-icon easyled-shipping-icon--%1$s" src="%2$s" alt="%3$s" loading="lazy" decoding="async">',
+			'<span class="easyled-shipping-badge easyled-shipping-badge--%1$s"><img class="easyled-shipping-icon easyled-shipping-icon--%1$s" src="%2$s" alt="%3$s" loading="lazy" decoding="async"><span class="easyled-shipping-text">%4$s</span></span>',
 			esc_attr( $carrier ),
 			esc_url( $icons[ $carrier ]['url'] ),
-			esc_attr( $alt_text )
+			esc_attr( $alt_text ),
+			wp_kses_post( $label )
 		);
 
-		return $icon_html . ' ' . $label;
+		return $icon_html;
 	}
 
 	/**
-	 * Refresh checkout totals when the payment method changes.
+	 * Return the COD fee amount after filters are applied.
 	 *
-	 * @return void
+	 * @param WC_Cart|null $cart The cart object.
+	 * @param string       $carrier Selected shipping carrier.
+	 * @return float
 	 */
-	public function refresh_checkout_on_payment_change() {
-		if ( ! function_exists( 'is_checkout' ) || ! is_checkout() || is_wc_endpoint_url() ) {
-			return;
+	private function get_cod_fee_amount( $cart = null, $carrier = '' ) {
+		$selected_shipping_methods = $this->get_selected_shipping_methods();
+		$amount                    = (float) apply_filters( 'easyled_woocommerce_enhancements_cod_fee_amount', 9.90, $cart, $carrier, $selected_shipping_methods );
+
+		if ( '' !== $carrier ) {
+			$amounts_by_carrier = (array) apply_filters( 'easyled_woocommerce_enhancements_cod_fee_amounts_by_carrier', array(), $cart, $selected_shipping_methods );
+			if ( isset( $amounts_by_carrier[ $carrier ] ) ) {
+				$amount = (float) $amounts_by_carrier[ $carrier ];
+			}
+
+			$amount = (float) apply_filters( 'easyled_woocommerce_enhancements_cod_fee_amount_for_carrier', $amount, $carrier, $cart, $selected_shipping_methods );
 		}
-		?>
-		<script>
-			jQuery(function($){
-				$(document.body).on('change', 'input[name="payment_method"]', function() {
-					$(document.body).trigger('update_checkout');
-				});
-			});
-		</script>
-		<?php
+
+		return max( 0, $amount );
 	}
 
 	/**
 	 * Return the configured COD fee label.
 	 *
+	 * @param string $carrier Selected shipping carrier.
 	 * @return string
 	 */
-	private function get_cod_fee_label() {
-		return (string) apply_filters(
+	private function get_cod_fee_label( $carrier = '' ) {
+		$selected_shipping_methods = $this->get_selected_shipping_methods();
+		$label                     = (string) apply_filters(
 			self::COD_FEE_LABEL_FILTER,
-			__( 'Supplemento pagamento alla consegna', 'easyled-woocommerce-enhancements' )
+			__( 'Supplemento pagamento alla consegna', 'easyled-woocommerce-enhancements' ),
+			$carrier,
+			$selected_shipping_methods
 		);
+
+		if ( '' !== $carrier ) {
+			$labels_by_carrier = (array) apply_filters( 'easyled_woocommerce_enhancements_cod_fee_labels_by_carrier', array(), $selected_shipping_methods );
+			if ( isset( $labels_by_carrier[ $carrier ] ) && '' !== trim( (string) $labels_by_carrier[ $carrier ] ) ) {
+				$label = (string) $labels_by_carrier[ $carrier ];
+			} else {
+				$label = trim( $label . ' ' . $this->get_carrier_display_name( $carrier ) );
+			}
+		}
+
+		return $label;
+	}
+
+	/**
+	 * Resolve the selected payment method from the current request or session.
+	 *
+	 * @return string
+	 */
+	private function get_chosen_payment_method() {
+		if ( isset( $_POST['payment_method'] ) ) {
+			return sanitize_text_field( wp_unslash( $_POST['payment_method'] ) );
+		}
+
+		if ( isset( $_POST['post_data'] ) ) {
+			$post_data = wp_unslash( $_POST['post_data'] );
+			parse_str( $post_data, $data );
+
+			if ( ! empty( $data['payment_method'] ) ) {
+				return sanitize_text_field( wp_unslash( $data['payment_method'] ) );
+			}
+		}
+
+		if ( function_exists( 'WC' ) && WC() && WC()->session ) {
+			return (string) WC()->session->get( 'chosen_payment_method' );
+		}
+
+		return '';
+	}
+
+	/**
+	 * Return the selected shipping methods from the current request or session.
+	 *
+	 * @return array
+	 */
+	private function get_selected_shipping_methods() {
+		$selected_shipping_methods = array();
+
+		if ( isset( $_POST['shipping_method'] ) ) {
+			$selected_shipping_methods = wp_unslash( $_POST['shipping_method'] );
+		} elseif ( isset( $_POST['post_data'] ) ) {
+			$post_data = wp_unslash( $_POST['post_data'] );
+			parse_str( $post_data, $data );
+
+			if ( isset( $data['shipping_method'] ) ) {
+				$selected_shipping_methods = $data['shipping_method'];
+			}
+		} elseif ( function_exists( 'WC' ) && WC() && WC()->session ) {
+			$selected_shipping_methods = WC()->session->get( 'chosen_shipping_methods', array() );
+		}
+
+		if ( ! is_array( $selected_shipping_methods ) ) {
+			$selected_shipping_methods = array( $selected_shipping_methods );
+		}
+
+		return array_values(
+			array_filter(
+				array_map(
+					static function ( $method_id ) {
+						return sanitize_text_field( (string) $method_id );
+					},
+					$selected_shipping_methods
+				)
+			)
+		);
+	}
+
+	/**
+	 * Detect the carrier associated with the selected shipping method.
+	 *
+	 * @return string
+	 */
+	private function get_selected_shipping_carrier() {
+		$selected_shipping_methods = $this->get_selected_shipping_methods();
+
+		if ( empty( $selected_shipping_methods ) || ! function_exists( 'WC' ) || ! WC() || ! WC()->shipping() ) {
+			return '';
+		}
+
+		$packages = WC()->shipping()->get_packages();
+
+		foreach ( $packages as $package_index => $package ) {
+			if ( empty( $selected_shipping_methods[ $package_index ] ) || empty( $package['rates'] ) || ! is_array( $package['rates'] ) ) {
+				continue;
+			}
+
+			$selected_rate_id = (string) $selected_shipping_methods[ $package_index ];
+			if ( empty( $package['rates'][ $selected_rate_id ] ) || ! is_object( $package['rates'][ $selected_rate_id ] ) ) {
+				continue;
+			}
+
+			$carrier = $this->detect_carrier( $package['rates'][ $selected_rate_id ]->get_label(), $package['rates'][ $selected_rate_id ] );
+			if ( '' !== $carrier ) {
+				return $carrier;
+			}
+		}
+
+		return '';
+	}
+
+	/**
+	 * Convert a carrier slug into a readable name.
+	 *
+	 * @param string $carrier Carrier slug.
+	 * @return string
+	 */
+	private function get_carrier_display_name( $carrier ) {
+		$carrier_labels = (array) apply_filters(
+			'easyled_woocommerce_enhancements_carrier_labels',
+			array(
+				'bartolini' => 'Bartolini',
+				'brt'       => 'BRT',
+			),
+			$carrier
+		);
+
+		if ( isset( $carrier_labels[ $carrier ] ) && '' !== trim( (string) $carrier_labels[ $carrier ] ) ) {
+			return (string) $carrier_labels[ $carrier ];
+		}
+
+		$carrier = str_replace( array( '-', '_' ), ' ', (string) $carrier );
+		return ucwords( strtolower( $carrier ) );
 	}
 
 	/**

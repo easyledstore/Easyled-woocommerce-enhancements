@@ -23,10 +23,42 @@
 	 *
 	 * ...and/or other possibilities.
 	 *
-	 * Ideally, it is not considered best practise to attach more than a
-	 * single DOM-ready or window-load handler for a particular page.
-	 * Although scripts in the WordPress core, Plugins and Themes may be
-	 * practising this, we should strive to set a better example in our own work.
+	 * Keep checkout totals in sync when payment method changes.
 	 */
+
+	$( function() {
+		var codMethodId = 'cod';
+
+		function syncCodCheckoutUi() {
+			var $paymentSection = $( '#payment' );
+			if ( ! $paymentSection.length ) {
+				return;
+			}
+
+			var selectedMethod = $( 'input[name="payment_method"]:checked' ).val();
+			var isCodSelected = selectedMethod === codMethodId;
+
+			$paymentSection.find( '.easyled-payment-method-hidden' ).removeClass( 'easyled-payment-method-hidden' ).show();
+
+			if ( isCodSelected ) {
+				$paymentSection.find( '.wc_payment_method' ).not( '.payment_method_' + codMethodId ).each( function() {
+					$( this ).addClass( 'easyled-payment-method-hidden' ).hide();
+				} );
+			}
+
+			$( '.easyled-cod-fee-notice' ).toggle( isCodSelected );
+		}
+
+		syncCodCheckoutUi();
+
+		$( document.body ).on( 'change', 'input[name="payment_method"]', function() {
+			syncCodCheckoutUi();
+			$( document.body ).trigger( 'update_checkout' );
+		} );
+
+		$( document.body ).on( 'updated_checkout', function() {
+			syncCodCheckoutUi();
+		} );
+	} );
 
 })( jQuery );
